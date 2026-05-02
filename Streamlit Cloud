@@ -1,0 +1,4 @@
+OPENWEATHER_KEY = "halkan_geli_keyga_dhabta_ah"
+TWILIO_SID = "halkan_geli_sid_gaaga"
+TWILIO_TOKEN = "halkan_geli_tokenka_gaaga"
+TWILIO_PHONE = "halkan_geli_lambarka_twilio"
