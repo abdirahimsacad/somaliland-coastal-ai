@@ -1,0 +1,103 @@
+import streamlit as st
+import folium
+from streamlit_folium import st_folium
+import requests
+from twilio.rest import Client
+import pandas as pd
+import datetime
+
+# --- CONFIGURATION ---
+OPENWEATHER_API_KEY = "GELI_OPENWEATHER_KEY"
+TWILIO_SID = "GELI_TWILIO_SID"
+TWILIO_TOKEN = "GELI_TWILIO_TOKEN"
+TWILIO_PHONE = "GELI_TWILIO_NUMBER"
+KALLUMAYSATA_PHONES = ["+252xxxxxxxxx"] # Lambarada qaadanaya digniinta
+
+COASTAL_CITIES = {
+    "Berbera": {"lat": 10.4396, "lon": 45.0119},
+    "Saylac": {"lat": 11.3533, "lon": 43.4683},
+    "Maydh": {"lat": 11.0000, "lon": 47.1167}
+    "Lughaya": {"lat": 10.6833, "lon": 43.9333}
+}
+
+# --- AI FUNCTIONS ---
+
+def get_real_weather(city_name):
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={OPENWEATHER_API_KEY}&units=metric"
+    try:
+        r = requests.get(url).json()
+        return {"wind": r['wind']['speed'], "temp": r['main']['temp'], "desc": r['weather'][0]['description']}
+    except: return None
+
+def send_autonomous_sms(city, wind_speed):
+    """SMS Agent: Wuxuu fariin diraa isagoon cidna weydiin"""
+    try:
+        client = Client(TWILIO_SID, TWILIO_TOKEN)
+        message_body = f"AI DHABO-GAL: Xeebta {city} waxaa ka jirta khatar dhab ah. Dabaysha: {wind_speed} m/s. Ha u bixin badda!"
+        for phone in KALLUMAYSATA_PHONES:
+            client.messages.create(body=message_body, from_=TWILIO_PHONE, to=phone)
+        return True
+    except Exception as e:
+        print(f"SMS Error: {e}")
+        return False
+
+# --- UI SETUP ---
+st.set_page_config(page_title="Autonomous AI Coastal Guard", layout="wide")
+st.title("🤖 Autonomous AI: Ilaalinta Xeebaha Somaliland (Auto-Pilot)")
+
+# State Management: Si aan SMS isku mid ah loo dirin mar kasta oo Page-ku refresh garoobo
+if 'sent_alerts' not in st.session_state:
+    st.session_state.sent_alerts = {} # {City: TimeSent}
+
+# --- MAIN AGENT LOOP ---
+all_data = []
+current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+st.subheader(f"Cusboonaysiintii u dambaysay: {current_time}")
+
+for city, coords in COASTAL_CITIES.items():
+    weather = get_real_weather(city)
+    if weather:
+        # 1. AI Decision Making
+        risk = "CAGAAR"
+        color = "green"
+        if weather['wind'] > 10: # Heerka khatarta (tusaale: 10 m/s)
+            risk = "CASAAN"
+            color = "red"
+            
+            # 2. Autonomous Action (Halkan ayay ka dhacaysaa automation-ku)
+            # Hubi haddii SMS horey loogu diray magaaladan saacadii u dambaysay
+            if city not in st.session_state.sent_alerts:
+                success = send_autonomous_sms(city, weather['wind'])
+                if success:
+                    st.session_state.sent_alerts[city] = current_time
+                    st.toast(f"🚨 SMS Digniin ah ayaa loo diray {city}!", icon="📲")
+        
+        all_data.append({"City": city, "Wind": weather['wind'], "Risk": risk, "Color": color, "Lat": coords['lat'], "Lon": coords['lon']})
+
+# --- DISPLAY ---
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    m = folium.Map(location=[10.8, 45.0], zoom_start=7)
+    for d in all_data:
+        folium.Marker([d['Lat'], d['Lon']], icon=folium.Icon(color=d['Color']), tooltip=d['City']).add_to(m)
+    st_folium(m, width=800, height=450)
+
+with col2:
+    st.write("### Log-ga Digniinihii u dambeeyay")
+    if st.session_state.sent_alerts:
+        for city, time in st.session_state.sent_alerts.items():
+            st.error(f"✅ SMS loo diray {city} | Waqtiga: {time}")
+    else:
+        st.write("Ma jiraan SMS-yo la diray hadda.")
+
+st.divider()
+st.table(pd.DataFrame(all_data)[['City', 'Wind', 'Risk']])
+
+# 4. Auto-Refresh: Dashboard-ku wuxuu is cusboonaysiinayaa 10-kii daqiiqaba
+st.info("Nidaamka wuxuu ku jiraa 'Auto-Pilot'. AI-gu wuxuu baadhayaa xogta si joogto ah.")
+# JavaScript yar oo Page-ka refresh garaynaya 600 seconds kasta
+st.components.v1.html("""<script>
+    setTimeout(function(){ window.location.reload(); }, 600000); 
+    </script>""", height=0)
