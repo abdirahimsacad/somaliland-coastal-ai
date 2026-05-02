@@ -1,0 +1,5 @@
+# Halkii aad koodhka ku qori lahayd keys-ka, isticmaal kan:
+OPENWEATHER_API_KEY = st.secrets["OPENWEATHER_KEY"]
+TWILIO_SID = st.secrets["TWILIO_SID"]
+TWILIO_TOKEN = st.secrets["TWILIO_TOKEN"]
+TWILIO_PHONE = st.secrets["TWILIO_PHONE"]
