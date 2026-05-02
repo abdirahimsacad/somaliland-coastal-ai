@@ -1,1 +1,113 @@
+import streamlit as st
+import folium
+from streamlit_folium import st_folium
+from twilio.rest import Client
+import pandas as pd
+import random
 
+# --- 1. CONFIGURATION (Geli xogtaada Twilio) ---
+TWILIO_ACCOUNT_SID = 'ACxxxxxxxxxxxxxxxxxxxxxxxx' 
+TWILIO_AUTH_TOKEN = 'your_auth_token'
+TWILIO_PHONE_NUMBER = '+1234567890'
+KALLUMAYSATO_NUMBERS = ['+252634746469', '+252654746469'] # Lambarada dhabta ah
+
+# --- 2. AI AGENTS LOGIC ---
+
+class CoastalAgenticAI:
+    @staticmethod
+    def get_weather_data(city):
+        """Simulating weather API data fetching"""
+        # Halkan mustaqbalka waxaad gelisaa requests.get(OpenWeatherAPI)
+        return {
+            "wind_speed": random.randint(10, 55), # knots
+            "wave_height": round(random.uniform(0.5, 5.0), 1), # meters
+            "visibility": random.randint(1, 10) # km
+        }
+
+    @staticmethod
+    def analyze_risk(data):
+        """AI Decision Making Logic"""
+        score = 0
+        if data['wind_speed'] > 35: score += 50
+        if data['wave_height'] > 3.0: score += 40
+        
+        if score >= 80: return "CASAAN", "KHATAR: Duufaan iyo hirar waaweyn. Jooji badda!", "red"
+        if score >= 40: return "JAALLO", "DIGNIIN: Badda way kacsan tahay, isjir.", "orange"
+        return "CAGAAR", "Xaaladu waa deggan tahay.", "green"
+
+def send_sms(message):
+    """Twilio SMS Agent"""
+    try:
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        for number in KALLUMAYSATO_NUMBERS:
+            client.messages.create(body=message, from_=TWILIO_PHONE_NUMBER, to=number)
+        return True
+    except Exception as e:
+        st.error(f"SMS Error: {e}")
+        return False
+
+# --- 3. STREAMLIT UI (DASHBOARD) ---
+
+st.set_page_config(page_title="AI Coastal Guard Somaliland", layout="wide")
+st.title("🌊 Agentic AI: Nidaamka Ilaalinta Xeebaha Somaliland")
+st.markdown("---")
+
+# Xogta goobaha
+locations = {
+    "Berbera": [10.4396, 45.0119],
+    "Saylac": [11.3533, 43.4683],
+    "Maydh": [11.0000, 47.1167],
+    "Lughaya": [10.6833, 43.9333]
+}
+
+# Ururi xogta goob kasta
+all_status = []
+for city, coords in locations.items():
+    weather = CoastalAgenticAI.get_weather_data(city)
+    level, msg, color = CoastalAgenticAI.analyze_risk(weather)
+    all_status.append({"City": city, "Lat": coords[0], "Lon": coords[1], 
+                       "Wind": weather['wind_speed'], "Waves": weather['wave_height'],
+                       "Level": level, "Msg": msg, "Color": color})
+
+# Qaybta sare: Metrics
+cols = st.columns(len(all_status))
+for i, status in enumerate(all_status):
+    with cols[i]:
+        st.metric(label=status['City'], value=f"{status['Wind']} kt", delta=status['Level'])
+        st.write(f"🌊 {status['Waves']}m")
+
+# Qaybta Dhexe: Khariidadda
+st.subheader("📍 Khariidadda Waqtiga-Dhabta ah ee Amniga Xeebaha")
+m = folium.Map(location=[10.5, 45.0], zoom_start=7)
+
+for s in all_status:
+    folium.Marker(
+        location=[s['Lat'], s['Lon']],
+        popup=f"{s['City']}: {s['Msg']}",
+        tooltip=s['City'],
+        icon=folium.Icon(color=s['Color'], icon="cloud")
+    ).add_to(m)
+
+st_folium(m, width=1300, height=450)
+
+# Qaybta Hoose: SMS Control Center
+st.markdown("---")
+st.subheader("📲 Xarunta Digniinta (SMS Control)")
+
+red_zones = [s for s in all_status if s['Level'] == "CASAAN"]
+
+if red_zones:
+    st.warning(f"Waxaa jira {len(red_zones)} goobood oo khatar ah!")
+    if st.button("U dir SMS Digniin ah dhammaan kallumaysatada"):
+        with st.spinner("SMS-ka ayaa la dirayaa..."):
+            for zone in red_zones:
+                alert_text = f"DIGNIIN {zone['City']}: {zone['Msg']} (Dabayl: {zone['Wind']}kt)"
+                success = send_sms(alert_text)
+                if success:
+                    st.success(f"Digniintii {zone['City']} waa la diray!")
+else:
+    st.success("Dhammaan xeebuhu waa ammaan hadda. Looma baahna SMS.")
+
+# Data Table
+with st.expander("Arag xogta oo dhammaystiran"):
+    st.table(pd.DataFrame(all_status).drop(['Lat', 'Lon', 'Color'], axis=1))
